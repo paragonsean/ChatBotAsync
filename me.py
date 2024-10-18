@@ -137,7 +137,7 @@ st.write("""
 uploaded_file = st.file_uploader("Upload OpenAPI Schema", type=["json", "yaml", "yml"])
 
 # OpenAI API key setup from Streamlit secrets
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+openai.api_key = st.secrets["openai_api_key"]
 
 # Load the OpenAPI schema: either from the uploaded file or the default one
 openapi_schema = load_openapi_schema(uploaded_file)
