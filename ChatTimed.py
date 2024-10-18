@@ -1,4 +1,6 @@
 import json
+import os
+
 import requests
 from requests import Response
 import openmeteo_requests
@@ -7,7 +9,12 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from typing import Literal
 import time
+from dotenv import load_dotenv
+load_dotenv(dotenv_path='.env')
 
+
+
+api_key = os.getenv("OPENAI_API_KEY")
 # Example prompts
 PROMPTS = {
     "headsOrTails": ("To decide what to eat tonight, we want to flip a coin. At heads we'll eat pizza, at tails a "

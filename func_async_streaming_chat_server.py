@@ -12,24 +12,13 @@ from dotenv import load_dotenv
     - Uses the environment variables
 """
 load_dotenv()
-API_HOST = os.getenv("API_HOST")
 
-if API_HOST == "azure":
-    client = openai.AsyncAzureOpenAI(
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    )
-    DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-elif API_HOST == "openai":
-    client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
-    DEPLOYMENT_NAME = os.getenv("OPENAI_MODEL")
-elif API_HOST == "ollama":
-    client = openai.AsyncOpenAI(
-        base_url="http://localhost:11434/v1",
-        api_key="nokeyneeded",
-    )
-    DEPLOYMENT_NAME = os.getenv("OLLAMA_MODEL")
+
+
+API_HOST = "openai"
+client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
+DEPLOYMENT_NAME = os.getenv("OPENAI_MODEL")
+
 
 """
     Get the current weather

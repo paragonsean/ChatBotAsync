@@ -1,210 +1,169 @@
-import os
 import json
+import os
+import functools
+import time
+from loguru import logger  # Importing loguru
+import aiohttp
+import openmeteo_requests
+import requests_cache
+from openai import AsyncOpenAI
+from typing import Literal
 import asyncio
-import openai
-from typing import Any, Tuple
-from typing import Tuple
 from dotenv import load_dotenv
 
-# Setup the OpenAI client to use either Azure, OpenAI or Ollama API
-load_dotenv()
-API_HOST = os.getenv("API_HOST")
+load_dotenv(dotenv_path='.env')
+api_key = os.getenv("OPENAI_API_KEY")
 
-if API_HOST == "azure":
-    client = openai.AsyncAzureOpenAI(
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    )
-    DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-elif API_HOST == "openai":
-    client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
-    DEPLOYMENT_NAME = os.getenv("OPENAI_MODEL")
-elif API_HOST == "ollama":
-    client = openai.AsyncOpenAI(
-        base_url="http://localhost:11434/v1",
-        api_key="nokeyneeded",
-    )
-    DEPLOYMENT_NAME = os.getenv("OLLAMA_MODEL")
+# Example prompts
+logger.add(sys.stdout, format="{time} {level} {message}\n", level="INFO")  # Configure loguru to add a newline
 
-# Example function hard coded to return the same weather
-# In production, this could be your backend API or an external API
-def get_current_weather(location, unit="fahrenheit"):
-    """Get the current weather in a given location"""
-    if "tokyo" in location.lower():
-        return json.dumps({"location": "Tokyo", "temperature": "10", "unit": unit})
-    elif "san francisco" in location.lower():
-        return json.dumps(
-            {"location": "San Francisco", "temperature": "72", "unit": unit}
-        )
-    elif "paris" in location.lower():
-        return json.dumps({"location": "Paris", "temperature": "22", "unit": unit})
-    else:
-        return json.dumps({"location": location, "temperature": "unknown"})
 
-def get_tools():
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "get_current_weather",
-                "description": """
-                    Get the current weather in a given location. 
-                    Note: any US cities have temperatures in Fahrenheit
-                """,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "The city and state, e.g. San Francisco, CA",
-                        },
-                        "unit": {
-                            "type": "string", 
-                            "description": "Unit of Measurement (Celsius or Fahrenheit) for the temperature based on the location",
-                            "enum": ["celsius", "fahrenheit"]
-                        },
-                    },
-                    "required": ["location"],
+def log_function_call(func):
+    """Log Function Call with Duration using loguru."""
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        logger.info(f"Calling function: {func.__name__} with args: {args} and kwargs: {kwargs}\n")
+        start_time = time.time()
+
+        if asyncio.iscoroutinefunction(func):
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                result = await func(*args, **kwargs)
+                end_time = time.time()
+                duration = end_time - start_time
+                logger.info(f"Function {func.__name__} completed with result: {result} in {duration:.4f} seconds\n")
+                return result
+
+            return async_wrapper(*args, **kwargs)
+        else:
+            result = func(*args, **kwargs)
+            end_time = time.time()
+            duration = end_time - start_time
+            logger.info(f"Function {func.__name__} completed with result: {result} in {duration:.4f} seconds\n")
+            return result
+
+    return wrapper
+
+
+PROMPTS = {
+    "headsOrTails": ("To decide what to eat tonight, we want to flip a coin. At heads we'll eat pizza, at tails a "
+                     "salad. What will we eat tonight?"),
+    "rollDice": "Alice, Bob and Claire decide who gets to last ice cream by rolling a dice. The highest roller gets "
+                "the ice cream. Please assist with this.",
+    "trump": "Who is Donald Trump?",
+    "willItRain": "Is there a chance of rain today in Amsterdam?",
+    "tempZimbabwe": "how hot is it in Zimbabwe today?",
+    "bbqWeather": "Is today a good day for bbq'ing in Antarctica?",
+    "whichMonth": "Based on the weather in New York, what month do you think it is?"
+}
+
+randomNumbersTool = {
+    "type": "function",
+    "function": {
+        "name": "get_random_numbers",
+        "description": "Generates a list of random numbers",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "min": {
+                    "type": "integer",
+                    "description": "Lower bound on the generated number",
+                },
+                "max": {
+                    "type": "integer",
+                    "description": "Upper bound on the generated number",
+                },
+                "count": {
+                    "type": "integer",
+                    "description": "How many numbers should be calculated",
+                }
+            },
+            "required": ["min", "max", "count"],
+        }
+    }
+}
+
+temperatureTool = {
+    "type": "function",
+    "function": {
+        "name": "get_temperature",
+        "description": "Gives the temperature for a given location",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "latitude": {
+                    "type": "number",
+                    "description": "The latitude of the location",
+                },
+                "longitude": {
+                    "type": "number",
+                    "description": "The longitude of the location",
                 },
             },
+            "required": ["latitude", "longitude"],
         }
-    ]
-
-def get_available_functions():
-    return { "get_current_weather": get_current_weather }
-
-def init_messages():
-    return [
-        { 
-            "role": "system", 
-            "content": """
-                You are a helpful assistant.
-                You have access to a function that can get the current weather in a given location.
-                Determine a reasonable Unit of Measurement (Celsius or Fahrenheit) for the temperature based on the location.
-            """
-        }
-    ]
-
-def get_user_input() -> str:
-    try:
-        user_input = input("User:> ")
-    except KeyboardInterrupt:
-        print("\n\nExiting chat...")
-        return ""
-    except EOFError:
-        print("\n\nExiting chat...")
-        return ""
-
-    # Handle exit command
-    if user_input == "exit":
-        print("\n\nExiting chat...")
-        return ""
-
-    return user_input
-
-async def chat(messages) -> Tuple[Any, bool]:
-    # User's input
-    user_input = get_user_input()
-    if not user_input:
-        return False
-    messages.append({"role": "user", "content": user_input})
-
-    # Step 1: send the conversation and available functions to the model
-    stream_response = await client.chat.completions.create(
-        model=DEPLOYMENT_NAME,
-        messages=messages,
-        tools=get_tools(),
-        tool_choice="auto",  # auto is default, but we'll be explicit
-        temperature=0,  # Adjust the variance by changing the temperature value (default is 0.8)
-        stream=True
-    )
-
-    print("Assistant:> ", end="")
-    
-    tool_calls = [] # Accumulator for tool calls to process later
-    full_delta_content = "" # Accumulator for the full assistant's content
-
-    async for chunk in stream_response:
-        delta = chunk.choices[0].delta if chunk.choices and chunk.choices[0].delta is not None else None
-
-        if delta and delta.content:
-            full_delta_content += delta.content
-            await asyncio.sleep(0.1)
-            print(delta.content, end="", flush=True)
-            
-        elif delta and delta.tool_calls:
-            tc_chunk_list = delta.tool_calls
-            for tc_chunk in tc_chunk_list:
-                if len(tool_calls) <= tc_chunk.index:
-                    tool_calls.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
-                tc = tool_calls[tc_chunk.index]
-
-                if tc_chunk.id:
-                    tc["id"] += tc_chunk.id
-                if tc_chunk.function.name:
-                    tc["function"]["name"] += tc_chunk.function.name
-                if tc_chunk.function.arguments:
-                    tc["function"]["arguments"] += tc_chunk.function.arguments
+    }
+}
 
 
-    # Step 2: check if the model wanted to call a function
+@log_function_call
+async def get_random_numbers(min: int, max: int, count: int) -> str:
+    url = "http://www.randomnumberapi.com/api/v1.0/random"
+    params = {
+        'min': min,
+        'max': max,
+        'count': count
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params) as response:
+            return json.dumps({"random numbers": await response.json()})
+
+
+@log_function_call
+async def get_temperature(latitude: float, longitude: float) -> str:
+    cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
+    openmeteo = openmeteo_requests.Client(session=cache_session)
+
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "current_weather": True
+    }
+
+    response = await openmeteo.weather(params=params)
+    value = response['current_weather']['temperature']
+    return json.dumps({"temperature": str(value)})
+
+
+@log_function_call
+async def handle_tool_response(client: AsyncOpenAI, completion, messages: list[dict[str, str]]) -> str:
+    tool_calls = completion.choices[0].message.function_call  # Access the function_call directly
+
     if tool_calls:
-        messages.append({ "role": "assistant", "tool_calls": tool_calls })
-        available_functions = get_available_functions() 
+        tool_name = tool_calls['name']
+        if tool_name == 'get_random_numbers':
+            args = json.loads(tool_calls['arguments'])
+            observation = await get_random_numbers(**args)
+            messages.append({
+                "role": "function",
+                "name": tool_name,
+                "content": observation
+            })
+            response_with_function_call = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+            )
+            return response_with_function_call.choices[0].message['content']
 
-        for tool_call in tool_calls:
+        elif tool_name == 'get_temperature':
+            args = json.loads(tool_calls['arguments'])
+            observation = await get_temperature(**args)
+            messages.append({
+                "role": "function",
+                "name": tool_name,
+                "content": observation
+            })
+            response_with_function_call = await client.chat.completions.create(
+                model="gpt-4o-mini",
 
-            # Note: the JSON response may not always be valid; be sure to handle errors
-            function_name = tool_call['function']['name']
-            if function_name not in available_functions:
-                return "Function " + function_name + " does not exist"
-        
-            # Step 3: call the function with arguments if any
-            function_to_call = available_functions[function_name]
-            function_args = json.loads(tool_call['function']['arguments'])
-            function_response = function_to_call(**function_args)
-
-            # Step 4: send the info for each function call and function response to the model
-            messages.append(
-                {
-                    "tool_call_id": tool_call['id'],
-                    "role": "tool",
-                    "name": function_name,
-                    "content": function_response,
-                }
-            )  # extend conversation with function response
-
-        stream_response2 = await client.chat.completions.create(
-            model=DEPLOYMENT_NAME,
-            messages=messages,
-            temperature=0,  # Adjust the variance by changing the temperature value (default is 0.8)
-            stream=True,
-        )
-
-        async def print_stream_chunks(stream):
-            async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content is not None:
-                    print(chunk.choices[0].delta.content, end="", flush=True)
-                    await asyncio.sleep(0.1)
-
-        await print_stream_chunks(stream_response2)
-
-        print("")
-        return True
-
-    print("")
-    messages.append({ "role": "assistant", "content": full_delta_content })
-    return True
-
-# Initialize the messages
-messages = init_messages()
-
-async def main() -> None:
-
-    chatting = True
-    while chatting:
-        chatting = await chat(messages)
-
-if __name__ == "__main__":
-    asyncio.run(main())
