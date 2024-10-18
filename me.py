@@ -131,4 +131,4 @@ if uploaded_file is not None:
                     st.json(endpoint_json)
 
 # OpenAI API key setup from Streamlit secrets
-openai.api_key = st.secrets["openai_api_key"]
+openai.api_key = st.secrets["OPENAI_API_KEY"]
