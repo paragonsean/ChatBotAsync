@@ -1,6 +1,8 @@
 openai==0.28.1
 python-dotenv
 pyyaml
-streamlit==0.89.0
+streamlit
 jsonschema
 jsonref
+jsonschema
+openapi_schema_validator
