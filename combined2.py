@@ -12,7 +12,6 @@ import asyncio
 from dotenv import load_dotenv
 
 
-api_key = "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"
 # Example prompts
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
