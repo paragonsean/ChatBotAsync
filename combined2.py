@@ -5,15 +5,14 @@ import time
 import logging
 import aiohttp
 import openmeteo_requests
-import requests_cache
+
 from openai import AsyncOpenAI
 from typing import Literal
 import asyncio
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path='.env')
-api_key = os.getenv("OPENAI_API_KEY")
 
+api_key = "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"
 # Example prompts
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -122,8 +121,8 @@ async def get_random_numbers(min: int, max: int, count: int) -> str:
 
 @log_function_call
 async def get_temperature(latitude: float, longitude: float) -> str:
-    cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
-    openmeteo = openmeteo_requests.Client(session=cache_session)
+
+    openmeteo = openmeteo_requests.Client()
 
     params = {
         "latitude": latitude,
