@@ -16,21 +16,34 @@ class DateTimeEncoder(json.JSONEncoder):
         return super(DateTimeEncoder, self).default(obj)
 
 # Function to handle querying the OpenAPI schema using LLM
-def query_openapi_schema(openapi_schema, query):
+def query_openapi_schema(openapi_schema, selected_path, selected_method, query):
     try:
-        # Use OpenAI API to process the query
-        response = openai.ChatCompletion.create(
-            model="gpt-4",  # Replace with your preferred model
-            messages=[
-                {"role": "system",
-                 "content": f"You are an assistant with knowledge of OpenAPI schema. The schema: {json.dumps(openapi_schema, cls=DateTimeEncoder)}"},
-                {"role": "user", "content": query}
-            ]
-        )
-        return response['choices'][0]['message']['content']
+        # Extract only the relevant part of the schema for the selected path and method
+        path_methods = openapi_schema["paths"].get(selected_path, {})
+        method_details = path_methods.get(selected_method.lower(), {})
+
+        if method_details:
+            # Serialize only the selected method and path into JSON format
+            selected_schema_part = json.dumps({selected_method.upper(): {selected_path: method_details}}, cls=DateTimeEncoder, indent=4)
+
+            # Use OpenAI API to process the query
+            response = openai.ChatCompletion.create(
+                model="gpt-4",  # Replace with your preferred model
+                messages=[
+                    {"role": "system",
+                     "content": f"You are an assistant with knowledge of OpenAPI schema. The schema: {selected_schema_part}"},
+                    {"role": "user", "content": query}
+                ]
+            )
+            return response['choices'][0]['message']['content']
+        else:
+            st.error("No details found for the selected endpoint.")
+            return None
+
     except Exception as e:
         st.error(f"Failed to query the schema: {e}")
         return None
+
 
 
 # Function to load the OpenAPI schema from a file or load the default one and resolve $refs
@@ -111,17 +124,21 @@ def get_endpoints_and_explanations(openapi_schema):
 # Function to generate JSON for a specific endpoint
 def generate_json_for_endpoint(openapi_schema, selected_path, selected_method):
     try:
+        # Extract the relevant part of the schema for the selected path and method
         path_methods = openapi_schema["paths"].get(selected_path, {})
         method_details = path_methods.get(selected_method.lower(), {})
+
         if method_details:
-            # Generate a clean JSON output for the specific method and path
-            return json.dumps({selected_method.upper(): {selected_path: method_details}}, indent=4)
+            # Serialize only the selected method and path into JSON format
+            endpoint_json = json.dumps({selected_method.upper(): {selected_path: method_details}}, indent=4)
+            return endpoint_json
         else:
             st.error("No details found for the selected endpoint.")
             return None
     except Exception as e:
         st.error(f"Failed to generate JSON for the selected endpoint: {e}")
         return None
+
 
 
 # Streamlit UI
@@ -168,7 +185,6 @@ if openapi_schema:
             if endpoint_json:
                 st.write("### Generated JSON for Selected Endpoint")
                 st.json(endpoint_json)
-
     # Section for querying the schema
     st.write("### Ask a Question About the OpenAPI Schema")
 
@@ -178,9 +194,11 @@ if openapi_schema:
     # Button to process the query using OpenAI
     if st.button("Submit Query"):
         if user_query:
-            query_response = query_openapi_schema(openapi_schema, user_query)
+            query_response = query_openapi_schema(openapi_schema, selected_path, selected_method, user_query)
             if query_response:
                 st.write("### Response to Your Query")
                 st.write(query_response)
         else:
             st.error("Please enter a query before submitting.")
+
+
