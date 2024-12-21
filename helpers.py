@@ -1,25 +1,19 @@
-# utils.py
+# helpers.py
 
+import os
+import shutil
+import streamlit as st
 import json
-from jsonschema import ValidationError
-from openapi_schema_validator import OAS30Validator
 import yaml
 import jsonref
-import streamlit as st
+from openapi_schema_validator import OAS30Validator
+from jsonschema import ValidationError
 from typing import List, Optional, Dict
-
-from OpenAIClient import OpenAIClient
+from openai_client import OpenAIClient  # Import OpenAIClient to access DateTimeEncoder
 
 def deep_merge_dicts(a: dict, b: dict) -> dict:
     """
     Recursively merges two dictionaries.
-
-    Args:
-        a (dict): The first dictionary.
-        b (dict): The second dictionary.
-
-    Returns:
-        dict: The merged dictionary.
     """
     for key in b:
         if key in a:
@@ -36,12 +30,6 @@ def deep_merge_dicts(a: dict, b: dict) -> dict:
 def load_openapi_schemas(files: List[st.runtime.uploaded_file_manager.UploadedFile]) -> Optional[dict]:
     """
     Loads and merges multiple OpenAPI schemas from uploaded files.
-
-    Args:
-        files (List[UploadedFile]): List of uploaded schema files.
-
-    Returns:
-        dict: The merged OpenAPI schema.
     """
     try:
         merged_schema = {}
@@ -72,9 +60,6 @@ def load_openapi_schemas(files: List[st.runtime.uploaded_file_manager.UploadedFi
 def validate_openapi_schema(openapi_schema: dict):
     """
     Validates the OpenAPI schema.
-
-    Args:
-        openapi_schema (dict): The OpenAPI schema to validate.
     """
     try:
         validator = OAS30Validator(openapi_schema)
@@ -88,12 +73,6 @@ def validate_openapi_schema(openapi_schema: dict):
 def get_endpoints_and_explanations(openapi_schema: dict) -> Optional[List[Dict]]:
     """
     Extracts endpoints and their summaries from the OpenAPI schema.
-
-    Args:
-        openapi_schema (dict): The OpenAPI schema.
-
-    Returns:
-        List[Dict]: A list of endpoints with their paths, methods, and summaries.
     """
     try:
         # Ensure that 'paths' is a dictionary
@@ -128,14 +107,6 @@ def get_endpoints_and_explanations(openapi_schema: dict) -> Optional[List[Dict]]
 def generate_json_for_endpoint(openapi_schema: dict, selected_path: str, selected_method: str) -> Optional[str]:
     """
     Generates JSON representation for a specific endpoint.
-
-    Args:
-        openapi_schema (dict): The OpenAPI schema.
-        selected_path (str): The selected API path.
-        selected_method (str): The selected HTTP method.
-
-    Returns:
-        str: JSON string of the selected endpoint.
     """
     try:
         # Extract the relevant part of the schema for the selected path and method
@@ -156,3 +127,16 @@ def generate_json_for_endpoint(openapi_schema: dict, selected_path: str, selecte
     except Exception as e:
         st.error(f"Failed to generate JSON for the selected endpoint: {e}")
         return None
+
+def cleanup_temp_directory():
+    """
+    Cleans up the temporary directory used for storing uploaded files.
+    """
+    try:
+        if os.path.exists("./temp"):
+            shutil.rmtree("./temp")
+            os.makedirs("./temp")
+        else:
+            os.makedirs("./temp")
+    except Exception as e:
+        st.error(f"Failed to clean up temporary directory: {e}")
