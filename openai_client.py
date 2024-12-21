@@ -10,7 +10,7 @@ import jsonref
 from pinecone import Pinecone, ServerlessSpec
 import concurrent.futures
 from tenacity import retry, stop_after_attempt, wait_exponential
-
+import tiktoken
 def split_text_by_tokens(text: str, max_tokens: int = 8000) -> List[str]:
     """
     Splits the input text into smaller chunks not exceeding max_tokens tokens.
