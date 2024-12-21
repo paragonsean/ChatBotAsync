@@ -7,8 +7,8 @@ from datetime import datetime
 import json
 import yaml
 import jsonref
-from pinecone import Pinecone, ServerlessSpec
-import tiktoken
+import pinecone
+from pinecone import ServerlessSpec
 import concurrent.futures
 from tenacity import retry, stop_after_attempt, wait_exponential
 

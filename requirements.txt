@@ -54,3 +54,4 @@ urllib3==2.2.3
 watchdog==6.0.0
 yarl==1.18.3
 pinecone-client==5.0.1  # Updated to a valid version
+tiktoken
